@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,9 +33,15 @@ func (m *Monitor) checkTGOrStop() bool {
 	m.lastTGCheck = time.Now()
 	m.tgCheckMu.Unlock()
 	if !ok {
-		m.state.Logger.Error("Telegram 通知失效,自动停止服务器监控: "+reason, "monitor")
-		m.Stop()
-		return false
+		// 仅当配置真正失效(未配置/Token无效/ChatID无效)才停监控;
+		// 网络瞬时不可达(超时/连接失败)只记警告,下轮再验证,避免一次抖动永久停摆。
+		if strings.Contains(reason, "无法连接") {
+			m.state.Logger.Warn("Telegram API 暂时不可达,跳过本轮验证,监控继续: "+reason, "monitor")
+		} else {
+			m.state.Logger.Error("Telegram 通知配置失效,自动停止服务器监控: "+reason, "monitor")
+			m.Stop()
+			return false
+		}
 	}
 	return true
 }
